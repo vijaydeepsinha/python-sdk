@@ -278,8 +278,9 @@ def _encode_cursor(offset: int) -> str:
 def _paginate(items: Sequence[_T], cursor: str | None, page_size: int | None) -> tuple[list[_T], str | None]:
     """Return one page of `items` and the cursor for the next page, if any.
 
-    The catalog is immutable, so a cursor is just an offset into `items`. Only the offsets this
-    function issues are valid; anything else is Invalid params.
+    The catalog is immutable, so a cursor is just an offset into `items`, and no state is kept
+    about which cursors were issued. Only an offset on a page boundary, in canonical form, is
+    accepted; anything else is Invalid params.
     """
     if page_size is None:
         if cursor is not None:

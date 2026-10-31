@@ -254,8 +254,10 @@ Each response then holds at most 50 entries and carries a `nextCursor` while mor
 `SkillsClient.list_skills()` and `read_directory()` follow it for you. A skill entry is never split
 across pages.
 
-The cursor is opaque. A cursor the catalog would not issue is rejected with Invalid params
-(`-32602`), and so is any cursor when `page_size` isn't set. A `page_size` below 1 raises `ValueError`.
+The cursor is opaque, and the catalog keeps no record of the cursors it has handed out. It accepts
+a cursor that marks a page boundary of its listing. A cursor that is malformed, out of range, or
+not on a page boundary is rejected with Invalid params (`-32602`), and so is any cursor when
+`page_size` isn't set. A `page_size` below 1 raises `ValueError`.
 
 ### Invalid skills
 
@@ -300,7 +302,8 @@ class SkillProvider(Protocol):
     async def read_file(self, path: str) -> bytes: ...
 ```
 
-`list_files()` returns the path of every file, recursively and without directories. `read_file()`
+`list_files()` returns the path of every file it serves, recursively and without directories. It
+may leave files out; `FilesystemSkillProvider` omits any name that starts with `.`. `read_file()`
 returns the raw bytes of one file. Paths use `/` as the separator and are relative to the root of
 the provider. A provider can therefore be backed by any storage, such as an archive, a database,
 or object storage.
