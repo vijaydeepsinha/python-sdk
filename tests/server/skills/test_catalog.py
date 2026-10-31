@@ -181,6 +181,30 @@ async def test_a_nested_skill_is_listed_and_its_files_also_belong_to_the_parent_
     ]
 
 
+async def test_a_skills_files_exclude_siblings_that_only_share_a_name_prefix() -> None:
+    """SDK-defined: a manifest holds only what is under `acme/`, not `acme-tools/`, `acme0/` or `acme.md`.
+
+    The provider lists in reverse order, so the result can't depend on the listing order.
+    """
+    files = {
+        "acme/SKILL.md": _skill_md("acme"),
+        "acme/guide.md": b"guide",
+        "acme-tools/SKILL.md": _skill_md("acme-tools"),
+        "acme0/SKILL.md": _skill_md("acme0"),
+        "acme.md": b"loose",
+    }
+    provider = _MemoryProvider(files, listing=sorted(files, reverse=True))
+    catalog = await SkillCatalog.load(provider, parse_frontmatter=_parse)
+    async with Client(MCPServer("skills", extensions=[catalog]), extensions=[ClientSkills()]) as client:
+        skills = {skill.uri: skill for skill in await client.extension(ClientSkills).list_skills()}
+
+    assert isinstance(skills["skill://acme/SKILL.md"].resources, list)
+    assert [r.uri for r in skills["skill://acme/SKILL.md"].resources] == [
+        "skill://acme/SKILL.md",
+        "skill://acme/guide.md",
+    ]
+
+
 async def test_hidden_files_and_directories_are_never_listed_or_served() -> None:
     """SDK-defined (matches typescript-sdk #3047): a path segment starting with `.` is skipped entirely."""
     server = await _server(

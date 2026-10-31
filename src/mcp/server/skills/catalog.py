@@ -8,6 +8,7 @@ import json
 import logging
 import mimetypes
 import re
+from bisect import bisect_left
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import PurePosixPath
 from typing import Any, Literal, Self, TypeVar
@@ -179,8 +180,8 @@ class SkillCatalog(Skills):
         if ttl_ms < 0:
             raise ValueError("ttl_ms must not be negative")
         paths = _check_paths(list(await provider.list_files()))
-        visible = [path for path in paths if not any(segment.startswith(".") for segment in path.split("/"))]
-        skill_paths = sorted(path for path in visible if path.split("/")[-1] == _SKILL_FILE)
+        visible = sorted(path for path in paths if not any(segment.startswith(".") for segment in path.split("/")))
+        skill_paths = [path for path in visible if path.split("/")[-1] == _SKILL_FILE]
 
         skills: dict[str, Skill] = {}
         served: set[str] = set()
@@ -312,6 +313,15 @@ def _check_paths(paths: list[str]) -> list[str]:
     return paths
 
 
+def _paths_under(sorted_paths: Sequence[str], prefix: str) -> list[str]:
+    """Return the paths that start with `prefix`; they are contiguous in sorted order, so no full scan is needed."""
+    start = bisect_left(sorted_paths, prefix)
+    end = start
+    while end < len(sorted_paths) and sorted_paths[end].startswith(prefix):
+        end += 1
+    return list(sorted_paths[start:end])
+
+
 def _fingerprint(data: bytes) -> _Fingerprint:
     return _Fingerprint(digest=hashlib.sha256(data).hexdigest(), size=len(data))
 
@@ -321,7 +331,7 @@ async def _load_skill(
     parse_frontmatter: Callable[[str], Mapping[str, Any]],
     skill_path: str,
     skill_md: bytes,
-    visible: Sequence[str],
+    sorted_visible: Sequence[str],
     fingerprints: dict[str, _Fingerprint],
 ) -> tuple[Skill, list[str]]:
     """Build the `Skill` whose `SKILL.md` is `skill_path`, along with the paths of its files.
@@ -331,7 +341,7 @@ async def _load_skill(
     """
     frontmatter = _parse_frontmatter(skill_md, parse_frontmatter)
     root = skill_path.removesuffix(_SKILL_FILE)
-    skill_files = [path for path in visible if path.startswith(root)]
+    skill_files = _paths_under(sorted_visible, root)
     for path in skill_files:
         if path not in fingerprints:
             fingerprints[path] = _fingerprint(await provider.read_file(path))
