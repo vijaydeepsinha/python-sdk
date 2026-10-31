@@ -22,6 +22,7 @@ FILESYSTEM_LOGGER = "mcp.server.skills.filesystem"
 # bodies are excluded from coverage by a pragma on each decorator.
 requires_file_symlinks = pytest.mark.skipif(sys.platform == "win32", reason="needs symlink privilege")
 requires_fifos = pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX-only")
+requires_posix_names = pytest.mark.skipif(sys.platform == "win32", reason="Windows forbids `\\` and `:` in names")
 
 IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
 IO_REPARSE_TAG_SYMLINK = 0xA000000C
@@ -197,6 +198,34 @@ async def test_read_file_rejects_empty_dot_and_dot_dot_segments(tmp_path: Path, 
     """SDK-defined: a path that could leave the root is refused before the file system is touched."""
     with pytest.raises(ValueError):
         await FilesystemSkillProvider(tmp_path).read_file(path)
+
+
+@pytest.mark.parametrize("path", ["..\\secret.txt", "skill\\SKILL.md", "C:secret.txt", "skill/C:SKILL.md"])
+async def test_read_file_refuses_windows_path_syntax_that_could_leave_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """SDK-defined: on Windows `\\` separates and `:` names a drive, so a "/"-only check would let these escape.
+
+    The Windows rule is switched on here because the escape can't be shown from a POSIX path.
+    """
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "secret.txt").write_bytes(b"outside the root")
+    monkeypatch.setattr("mcp.server.skills.filesystem._FORBIDDEN_SEGMENT_CHARS", "\\:")
+
+    with pytest.raises(ValueError):
+        await FilesystemSkillProvider(root).read_file(path)
+
+
+@requires_posix_names  # pragma: lax no cover
+async def test_names_containing_a_colon_or_backslash_are_served_off_windows(tmp_path: Path) -> None:
+    """SDK-defined: `:` and `\\` are ordinary name characters on POSIX, so the Windows rule must not reject them."""
+    (tmp_path / "skill").mkdir()
+    (tmp_path / "skill" / "a:b\\c.md").write_bytes(b"content")
+    provider = FilesystemSkillProvider(tmp_path)
+
+    assert await provider.list_files() == ["skill/a:b\\c.md"]
+    assert await provider.read_file("skill/a:b\\c.md") == b"content"
 
 
 async def test_read_file_raises_os_error_for_a_missing_file(tmp_path: Path) -> None:

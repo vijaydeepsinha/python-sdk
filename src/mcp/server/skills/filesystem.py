@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 _READ_FLAGS = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
 
 
+# Windows reads `\` as a separator and `:` as drive syntax, so a "/"-only check lets `..\x` or `C:x` leave the root.
+# On POSIX both are ordinary file name characters.
+_FORBIDDEN_SEGMENT_CHARS = "\\:" if os.name == "nt" else ""
+
 # Windows junctions and symlinks are reparse points tagged IO_REPARSE_TAG_MOUNT_POINT / IO_REPARSE_TAG_SYMLINK,
 # constants that `stat` only types on Windows. Other reparse points (cloud placeholders, dedup) are ordinary files.
 _WINDOWS_LINK_REPARSE_TAGS = frozenset({0xA0000003, 0xA000000C})
@@ -53,12 +57,16 @@ class FilesystemSkillProvider:
         """Return the bytes of the regular file at `path`, relative to the root.
 
         Raises:
-            ValueError: If `path` has an empty, `.` or `..` segment.
+            ValueError: If `path` has an empty, `.` or `..` segment, or, on Windows, a segment
+                containing `\\` or `:`.
             OSError: If the file is missing, can't be read, is a symlink, or isn't a
                 regular file, or if a directory on the way to it is a symlink.
         """
         segments = path.split("/")
-        if any(segment in ("", ".", "..") for segment in segments):
+        if any(
+            segment in ("", ".", "..") or any(char in segment for char in _FORBIDDEN_SEGMENT_CHARS)
+            for segment in segments
+        ):
             raise ValueError(f"invalid skill file path {path!r}")
         return await anyio.to_thread.run_sync(self._read_file, segments)
 

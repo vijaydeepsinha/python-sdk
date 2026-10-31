@@ -16,9 +16,10 @@ class SkillProvider(Protocol):
     """
 
     async def list_files(self) -> Sequence[str]:
-        """Return the path of every file, recursively.
+        """Return the path of every file the provider serves, recursively.
 
-        Directories are not listed, and each path appears once.
+        Directories are not listed, and each path appears once. A provider may leave files out;
+        `FilesystemSkillProvider` omits any name that starts with `.`.
         """
         ...
 

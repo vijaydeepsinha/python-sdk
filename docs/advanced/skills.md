@@ -254,8 +254,8 @@ Each response then holds at most 50 entries and carries a `nextCursor` while mor
 `SkillsClient.list_skills()` and `read_directory()` follow it for you. A skill entry is never split
 across pages.
 
-The cursor is opaque. One the catalog didn't issue is rejected with Invalid params (`-32602`), and
-so is any cursor when `page_size` isn't set. A `page_size` below 1 raises `ValueError`.
+The cursor is opaque. A cursor the catalog would not issue is rejected with Invalid params
+(`-32602`), and so is any cursor when `page_size` isn't set. A `page_size` below 1 raises `ValueError`.
 
 ### Invalid skills
 
@@ -310,9 +310,12 @@ or `..` segment, is listed more than once, or lies beneath another listed file. 
 regardless of `strict`, because it indicates an error in the provider rather than in a skill.
 
 `FilesystemSkillProvider(root)` is the provider for a local directory. It serves regular files
-only. Symbolic links and Windows junctions are never followed: they are omitted, with a warning,
-when listing, and refused when read. A skill directory therefore cannot expose files outside
-itself. Blocking file system calls run in a worker thread.
+only. Symbolic links and Windows junctions found while listing are omitted, with a warning, and
+ones found while reading are refused, so a skill directory doesn't expose files outside itself.
+
+The root is trusted. This is a best-effort check, not a defence against someone who can modify the
+directory while the server runs. As a backstop, the catalog refuses to serve any file whose bytes
+no longer match the digest taken at `load()`. Blocking file system calls run in a worker thread.
 
 ## Protocol version and caching
 
